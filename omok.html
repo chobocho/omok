@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chobocho's 오목</title>
+    <style>
+        :root {
+            --bg-color: #f0f0f0;
+            --board-color: #e3c16f;
+            --line-color: #000;
+            --cell-size: 36px; /* 셀 크기 변수화 (540px / 15) */
+        }
+
+        body {
+            font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+            background-color: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 { margin-bottom: 10px; }
+
+        /* 컨트롤 패널 */
+        .controls {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: center;
+            justify-content: center;
+            max-width: 600px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        label { font-size: 0.9rem; font-weight: bold; }
+        select, button { padding: 8px 12px; cursor: pointer; border: 1px solid #ccc; border-radius: 4px; }
+        button { background-color: #4CAF50; color: white; border: none; font-weight: bold; transition: 0.2s; }
+        button:hover { background-color: #45a049; }
+        button#hint-btn { background-color: #FF9800; }
+        button#hint-btn:hover { background-color: #e68900; }
+
+        /* --- 게임 보드 래퍼 (좌표 + 보드) --- */
+        .game-container {
+            display: grid;
+            /* 좌측 좌표(30px) + 보드(540px) */
+            grid-template-columns: 30px 540px; 
+            /* 상단 좌표(30px) + 보드(540px) */
+            grid-template-rows: 30px 540px;
+            margin-bottom: 15px;
+        }
+
+        /* 상단 알파벳 좌표 */
+        .coord-top {
+            grid-column: 2;
+            grid-row: 1;
+            display: grid;
+            grid-template-columns: repeat(15, 1fr);
+            align-items: end;
+            justify-items: center;
+            font-weight: bold;
+            padding-bottom: 5px;
+            color: #555;
+        }
+
+        /* 좌측 숫자 좌표 */
+        .coord-left {
+            grid-column: 1;
+            grid-row: 2;
+            display: grid;
+            grid-template-rows: repeat(15, 1fr);
+            align-items: center;
+            justify-items: end;
+            font-weight: bold;
+            padding-right: 8px;
+            color: #555;
+        }
+
+        /* 오목판 */
+        #board {
+            grid-column: 2;
+            grid-row: 2;
+            width: 540px;
+            height: 540px;
+            background-color: var(--board-color);
+            display: grid;
+            grid-template-columns: repeat(15, 1fr);
+            grid-template-rows: repeat(15, 1fr);
+            padding: 18px; /* 보드 안쪽 여백 (돌이 선 위에 놓이는 효과를 위해) */
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+            position: relative;
+            box-sizing: border-box; /* 패딩 포함 크기 계산 */
+        }
+
+        .cell {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            cursor: pointer;
+        }
+
+        /* 격자 선 */
+        .cell::before {
+            content: '';
+            position: absolute;
+            top: 50%; left: 0; right: 0;
+            height: 1px;
+            background: var(--line-color);
+            z-index: 0;
+        }
+        .cell::after {
+            content: '';
+            position: absolute;
+            left: 50%; top: 0; bottom: 0;
+            width: 1px;
+            background: var(--line-color);
+            z-index: 0;
+        }
+
+        /* 돌 디자인 */
+        .stone {
+            width: 80%;
+            height: 80%;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1;
+            box-shadow: 2px 2px 4px rgba(0,0,0,0.4);
+        }
+        .stone.black {
+            background: radial-gradient(circle at 30% 30%, #555, #000);
+        }
+        .stone.white {
+            background: radial-gradient(circle at 30% 30%, #fff, #ddd);
+        }
+        .last-move::after {
+            content: '';
+            position: absolute;
+            width: 10px; height: 10px;
+            background: red;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            z-index: 2;
+        }
+
+        /* 훈수 마커 */
+        .hint-marker {
+            width: 40%;
+            height: 40%;
+            background-color: rgba(255, 0, 255, 0.7);
+            border-radius: 50%;
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 2;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -50%) scale(1.2); }
+            100% { transform: translate(-50%, -50%) scale(1); }
+        }
+
+        /* 하단 상태 바 */
+        .status-bar {
+            width: 570px; /* 전체 너비에 맞춤 (30 + 540) */
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            box-sizing: border-box;
+        }
+
+        .score-box {
+            display: flex;
+            align-items: center;
+            font-size: 1.1rem;
+            font-weight: bold;
+            min-width: 100px;
+        }
+        
+        .score-box.black { color: black; }
+        .score-box.white { color: #555; justify-content: flex-end; }
+
+        .stone-icon {
+            display: inline-block;
+            width: 20px; height: 20px;
+            border-radius: 50%;
+            margin: 0 8px;
+            box-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+        }
+        .stone-icon.black { background: black; }
+        .stone-icon.white { background: #eee; border: 1px solid #ccc; }
+
+        #status-msg {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #333;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <div class="control-group">
+            <label>게임 모드</label>
+            <select id="mode-select">
+                <option value="pve">사람 vs AI</option>
+                <option value="pvp">사람 vs 사람</option>
+            </select>
+        </div>
+        
+        <div class="control-group" id="color-group">
+            <label>내 돌 선택 (AI모드)</label>
+            <select id="player-color">
+                <option value="black">흑 (선공)</option>
+                <option value="white">백 (후공)</option>
+            </select>
+        </div>
+
+        <button onclick="startGame()">새 게임 시작</button>
+        <button id="hint-btn" onclick="showHint()">💡 훈수 두기</button>
+    </div>
+
+    <div class="game-container">
+        <div id="coord-top" class="coord-top"></div>
+        <div id="coord-left" class="coord-left"></div>
+        <div id="board"></div>
+    </div>
+
+    <div class="status-bar">
+        <div class="score-box black">
+            <span class="stone-icon black"></span>
+            흑돌: <span id="cnt-black">0</span>
+        </div>
+        <div id="status-msg">게임을 시작해 주세요.</div>
+        <div class="score-box white">
+            백돌: <span id="cnt-white">0</span>
+            <span class="stone-icon white"></span>
+        </div>
+    </div>
+
+    <script>
+        const BOARD_SIZE = 15;
+        const boardEl = document.getElementById('board');
+        const statusEl = document.getElementById('status-msg');
+        const cntBlackEl = document.getElementById('cnt-black');
+        const cntWhiteEl = document.getElementById('cnt-white');
+        
+        let board = [];
+        let currentPlayer = 1; // 1: 흑, 2: 백
+        let gameActive = false;
+        let lastMove = null;
+        let countBlack = 0;
+        let countWhite = 0;
+
+        let gameMode = 'pve'; 
+        let myColor = 1; 
+
+        document.getElementById('mode-select').addEventListener('change', function(e) {
+            gameMode = e.target.value;
+            const isPvE = gameMode === 'pve';
+            document.getElementById('color-group').style.display = isPvE ? 'flex' : 'none';
+        });
+
+        function initBoard() {
+            boardEl.innerHTML = '';
+            board = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(0));
+            
+            // 좌표 생성 (알파벳 상단)
+            const topCoordEl = document.getElementById('coord-top');
+            topCoordEl.innerHTML = '';
+            for(let i=0; i<BOARD_SIZE; i++) {
+                const char = String.fromCharCode(65 + i); // A(65) 부터 시작
+                const el = document.createElement('div');
+                el.innerText = char;
+                topCoordEl.appendChild(el);
+            }
+
+            // 좌표 생성 (숫자 좌측)
+            const leftCoordEl = document.getElementById('coord-left');
+            leftCoordEl.innerHTML = '';
+            for(let i=1; i<=BOARD_SIZE; i++) {
+                const el = document.createElement('div');
+                el.innerText = i;
+                leftCoordEl.appendChild(el);
+            }
+
+            // 보드 셀 생성
+            for(let y=0; y<BOARD_SIZE; y++) {
+                for(let x=0; x<BOARD_SIZE; x++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell');
+                    cell.dataset.x = x;
+                    cell.dataset.y = y;
+                    cell.onclick = () => handleCellClick(x, y);
+                    boardEl.appendChild(cell);
+                }
+            }
+
+            countBlack = 0;
+            countWhite = 0;
+            updateCounter();
+        }
+
+        function startGame() {
+            gameMode = document.getElementById('mode-select').value;
+            const colorVal = document.getElementById('player-color').value;
+            myColor = (colorVal === 'black') ? 1 : 2; 
+            
+            initBoard();
+            currentPlayer = 1; 
+            gameActive = true;
+            lastMove = null;
+            updateStatus();
+
+            if(gameMode === 'pve' && myColor === 2) {
+                setTimeout(aiMove, 500);
+            }
+        }
+
+        function handleCellClick(x, y) {
+            if (!gameActive) return;
+            if (board[y][x] !== 0) return;
+            if (gameMode === 'pve' && currentPlayer !== myColor) return;
+
+            placeStone(x, y, currentPlayer);
+            
+            if (checkWin(x, y, currentPlayer)) {
+                endGame(currentPlayer);
+                return;
+            }
+
+            currentPlayer = currentPlayer === 1 ? 2 : 1;
+            updateStatus();
+
+            if (gameMode === 'pve' && currentPlayer !== myColor) {
+                setTimeout(aiMove, 100); 
+            }
+        }
+
+        function placeStone(x, y, player) {
+            board[y][x] = player;
+            const cell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+            
+            const stone = document.createElement('div');
+            stone.classList.add('stone');
+            stone.classList.add(player === 1 ? 'black' : 'white');
+            cell.appendChild(stone);
+
+            const prevLast = document.querySelector('.last-move');
+            if(prevLast) prevLast.classList.remove('last-move');
+            stone.classList.add('last-move');
+
+            removeHint();
+
+            if (player === 1) countBlack++;
+            else countWhite++;
+            updateCounter();
+        }
+
+        function updateCounter() {
+            cntBlackEl.innerText = countBlack;
+            cntWhiteEl.innerText = countWhite;
+        }
+
+        function updateStatus() {
+            const playerText = currentPlayer === 1 ? "흑 차례 (Black)" : "백 차례 (White)";
+            statusEl.innerText = playerText;
+        }
+
+        function endGame(winner) {
+            gameActive = false;
+            const winnerText = winner === 1 ? "흑돌 승리! 🎉" : "백돌 승리! 🎉";
+            statusEl.innerText = winnerText;
+            setTimeout(() => alert(winnerText), 100);
+        }
+
+        function checkWin(x, y, player) {
+            const directions = [[1, 0], [0, 1], [1, 1], [1, -1]];
+            for (let [dx, dy] of directions) {
+                let count = 1;
+                for (let i = 1; i < 5; i++) {
+                    const nx = x + dx * i;
+                    const ny = y + dy * i;
+                    if (nx < 0 || nx >= BOARD_SIZE || ny < 0 || ny >= BOARD_SIZE) break;
+                    if (board[ny][nx] === player) count++; else break;
+                }
+                for (let i = 1; i < 5; i++) {
+                    const nx = x - dx * i;
+                    const ny = y - dy * i;
+                    if (nx < 0 || nx >= BOARD_SIZE || ny < 0 || ny >= BOARD_SIZE) break;
+                    if (board[ny][nx] === player) count++; else break;
+                }
+                if (count >= 5) return true;
+            }
+            return false;
+        }
+
+        function aiMove() {
+            if (!gameActive) return;
+            let move = getBestMove();
+            if (move) {
+                placeStone(move.x, move.y, currentPlayer);
+                if (checkWin(move.x, move.y, currentPlayer)) {
+                    endGame(currentPlayer);
+                } else {
+                    currentPlayer = currentPlayer === 1 ? 2 : 1;
+                    updateStatus();
+                }
+            }
+        }
+
+        function showHint() {
+            if (!gameActive) return;
+            const best = getBestMove(); 
+            if (best) {
+                removeHint();
+                const cell = document.querySelector(`.cell[data-x="${best.x}"][data-y="${best.y}"]`);
+                const marker = document.createElement('div');
+                marker.className = 'hint-marker';
+                cell.appendChild(marker);
+            }
+        }
+
+        function removeHint() {
+            const existing = document.querySelector('.hint-marker');
+            if (existing) existing.remove();
+        }
+
+        function getRandomMove() {
+            const empties = [];
+            for(let y=0; y<BOARD_SIZE; y++) {
+                for(let x=0; x<BOARD_SIZE; x++) {
+                    if(board[y][x] === 0) empties.push({x, y});
+                }
+            }
+            if(empties.length === 0) return null;
+            return empties[Math.floor(Math.random() * empties.length)];
+        }
+
+        function getBestMove() {
+            let maxScore = -Infinity;
+            let bestMoves = [];
+            const center = Math.floor(BOARD_SIZE / 2);
+
+            for (let y = 0; y < BOARD_SIZE; y++) {
+                for (let x = 0; x < BOARD_SIZE; x++) {
+                    if (board[y][x] !== 0) continue;
+                    
+                    const attackScore = evaluatePosition(x, y, currentPlayer);
+                    const defenseScore = evaluatePosition(x, y, currentPlayer === 1 ? 2 : 1);
+                    const dist = Math.abs(x - center) + Math.abs(y - center);
+                    const posScore = (BOARD_SIZE * 2 - dist);
+
+                    let totalScore = 0;
+                    if (attackScore >= 10000) totalScore = attackScore * 1.2; 
+                    else if (defenseScore >= 10000) totalScore = defenseScore;
+                    else totalScore = attackScore + defenseScore + posScore;
+
+                    if (totalScore > maxScore) {
+                        maxScore = totalScore;
+                        bestMoves = [{x, y}];
+                    } else if (totalScore === maxScore) {
+                        bestMoves.push({x, y});
+                    }
+                }
+            }
+            if (bestMoves.length > 0) return bestMoves[Math.floor(Math.random() * bestMoves.length)];
+            return getRandomMove();
+        }
+
+        function evaluatePosition(x, y, player) {
+            const directions = [[1, 0], [0, 1], [1, 1], [1, -1]];
+            let score = 0;
+            for (let [dx, dy] of directions) {
+                let count = 1;
+                let openEnds = 0;
+                
+                let i = 1;
+                while(true) {
+                    const nx = x + dx * i;
+                    const ny = y + dy * i;
+                    if(nx < 0 || nx >= BOARD_SIZE || ny < 0 || ny >= BOARD_SIZE) break;
+                    if(board[ny][nx] === player) count++;
+                    else if(board[ny][nx] === 0) { openEnds++; break; }
+                    else break;
+                    i++;
+                }
+                i = 1;
+                while(true) {
+                    const nx = x - dx * i;
+                    const ny = y - dy * i;
+                    if(nx < 0 || nx >= BOARD_SIZE || ny < 0 || ny >= BOARD_SIZE) break;
+                    if(board[ny][nx] === player) count++;
+                    else if(board[ny][nx] === 0) { openEnds++; break; }
+                    else break;
+                    i++;
+                }
+
+                if (count >= 5) score += 100000;
+                else if (count === 4) {
+                    if (openEnds === 2) score += 10000;
+                    else if (openEnds === 1) score += 1000;
+                } else if (count === 3) {
+                    if (openEnds === 2) score += 1000;
+                    else if (openEnds === 1) score += 100;
+                } else if (count === 2 && openEnds === 2) score += 100;
+            }
+            return score;
+        }
+
+        initBoard();
+    </script>
+</body>
+</html>
