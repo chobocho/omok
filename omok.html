@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chobocho's 오목</title>
+    <title>Chobocho's 오목 V0.11</title>
     <style>
         :root {
             --bg-color: #f0f0f0;
@@ -235,8 +235,8 @@
             </select>
         </div>
 
-        <button onclick="startGame()">새 게임 시작</button>
-        <button id="hint-btn" onclick="showHint()">💡 훈수 두기</button>
+        <button onclick="startGame()">새 게임 시작 (F2)</button>
+        <button id="hint-btn" onclick="showHint()">💡 훈수 두기 (H)</button>
     </div>
 
     <div class="game-container">
@@ -541,11 +541,21 @@
             }
             return score;
         }
-
-
+        
         document.addEventListener('keydown', function (e) {
             if (e.key === 'h' || e.key === 'H') {
                 showHint();
+            }
+
+            if (e.key === 'F2') {
+                e.preventDefault();
+                if (gameActive && (countBlack > 0 || countWhite > 0)) {
+                    if (confirm('게임이 진행 중입니다. 정말로 새 게임을 시작하시겠습니까?')) {
+                        startGame();
+                    }
+                } else {
+                    startGame();
+                }
             }
         });
 
