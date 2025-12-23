@@ -259,6 +259,7 @@
 
     <script>
         const BOARD_SIZE = 15;
+        const MAX_COUNT = BOARD_SIZE * BOARD_SIZE;
         const boardEl = document.getElementById('board');
         const statusEl = document.getElementById('status-msg');
         const cntBlackEl = document.getElementById('cnt-black');
@@ -348,6 +349,11 @@
                 return;
             }
 
+            if (countBlack + countWhite >= MAX_COUNT) {
+                endGameDraw();
+                return;
+            }
+
             currentPlayer = currentPlayer === 1 ? 2 : 1;
             updateStatus();
 
@@ -393,6 +399,13 @@
             setTimeout(() => alert(winnerText), 100);
         }
 
+        function endGameDraw() {
+            gameActive = false;
+            const drawText = "무승부! 🤝";
+            statusEl.innerText = drawText;
+            setTimeout(() => alert(drawText), 100);
+        }
+
         function checkWin(x, y, player) {
             const directions = [[1, 0], [0, 1], [1, 1], [1, -1]];
             for (let [dx, dy] of directions) {
@@ -421,6 +434,8 @@
                 placeStone(move.x, move.y, currentPlayer);
                 if (checkWin(move.x, move.y, currentPlayer)) {
                     endGame(currentPlayer);
+                } else if (countBlack + countWhite >= 225) {
+                    endGameDraw();
                 } else {
                     currentPlayer = currentPlayer === 1 ? 2 : 1;
                     updateStatus();
@@ -526,6 +541,13 @@
             }
             return score;
         }
+
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'h' || e.key === 'H') {
+                showHint();
+            }
+        });
 
         initBoard();
     </script>
