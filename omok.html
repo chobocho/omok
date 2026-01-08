@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Chobocho's 오목 V0.17</title>
+    <title>Chobocho's 오목 V0.19</title>
     <style>
         :root {
             --bg-color: #f0f0f0;
@@ -105,7 +105,6 @@
 
         .status-bar {
             flex-shrink: 0;
-            width: 100%;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -116,7 +115,13 @@
             font-size: 0.9rem;
         }
 
-        .score-box { display: flex; align-items: center; font-weight: bold; }
+        .score-box {
+            display: flex;
+            align-items: center;
+            font-weight: bold;
+            line-height: 1;
+        }
+
         .score-box.black { color: black; }
         .score-box.white { color: #555; justify-content: flex-end; }
 
@@ -279,6 +284,10 @@
 
         // 셀 크기 계산 (CSS 픽셀 기준)
         cellSize = canvasCSSSize / BOARD_SIZE;
+
+        // status-bar 너비를 캔버스 너비와 맞춤
+        const statusBar = document.querySelector('.status-bar');
+        statusBar.style.width = `${canvasCSSSize}px`;
 
         requestRender(); // 화면 갱신
     }
