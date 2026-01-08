@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Chobocho's 오목 V0.17 (Fixed)</title>
+    <title>Chobocho's 오목 V0.17</title>
     <style>
         :root {
             --bg-color: #f0f0f0;
@@ -145,7 +145,7 @@
             <option value="white">백 (후공)</option>
         </select>
     </div>
-    <button onclick="startGame()">새 게임(F2)</button>
+    <button onclick="askNewGame()">새 게임(F2)</button>
     <button id="hint-btn" onclick="showHint()">💡훈수</button>
 </div>
 
@@ -567,9 +567,22 @@
         if(m) { hintMove=m; requestRender(); }
     }
 
+    function askNewGame() {
+        if (gameActive && (countBlack > 0 || countWhite > 0)) {
+            if (confirm('게임이 진행 중입니다. 정말로 새 게임을 시작하시겠습니까?')) {
+                startGame();
+            }
+        } else {
+            startGame();
+        }
+    }
+
     document.addEventListener('keydown', e => {
         if(e.key.toLowerCase()==='h') showHint();
-        if(e.key==='F2') { e.preventDefault(); startGame(); }
+        if (e.key === 'F2') {
+            e.preventDefault();
+            askNewGame();
+        }
     });
 
     // 초기 실행
