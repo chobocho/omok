@@ -72,6 +72,8 @@
             /* 초기 크기 (JS로 제어됨) */
             width: 300px;
             height: 300px;
+            aspect-ratio: 1 / 1;
+            overflow: hidden;
         }
 
         .coord-top {
@@ -244,36 +246,39 @@
         const h = gameWrapper.clientHeight;
         // 20px(좌표 공간) + 10px(여백)
         let size = Math.min(w, h) - 10;
-        if (size < 200) size = 200;
+        if (size < 255) size = 255;
 
-        // 1. 컨테이너 CSS 크기 설정
+        // 1. 컨테이너 CSS 크기 설정 (항상 정사각형 유지)
         gameContainer.style.width = `${size}px`;
         gameContainer.style.height = `${size}px`;
 
         // 2. 캔버스의 실제 내부 해상도 조정 (High DPI 지원)
         const dpr = window.devicePixelRatio || 1;
 
-        // Grid Layout에 의해 결정된 캔버스의 CSS 크기 구하기
-        const rect = canvas.getBoundingClientRect();
+        // 컨테이너 크기 기준으로 캔버스 영역 계산 (20px는 좌표 공간)
+        // getBoundingClientRect 대신 계산된 size를 직접 사용해 정합성 확보
+        const canvasCSSSize = size - 20;
 
         // 캔버스 메모리 크기(buffer size)를 DPI에 맞춰 키움 -> 선명해짐
-        canvas.width = rect.width * dpr;
-        canvas.height = rect.height * dpr;
+        // width와 height를 동일한 canvasCSSSize로 설정하여 정사각형 유지
+        canvas.width = Math.floor(canvasCSSSize * dpr);
+        canvas.height = Math.floor(canvasCSSSize * dpr);
+
+        console.log(`Canvas resized to ${canvas.width}x${canvas.height} with DPR ${dpr}`);
 
         // 오프스크린도 동일하게
         offscreenCanvas.width = canvas.width;
         offscreenCanvas.height = canvas.height;
 
         // 컨텍스트 스케일 조정 (CSS 픽셀 단위로 그리기 위해)
-        // ctx와 offCtx 모두 스케일링 필요
-        ctx.setTransform(1, 0, 0, 1, 0, 0); // 초기화
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.scale(dpr, dpr);
 
-        offCtx.setTransform(1, 0, 0, 1, 0, 0); // 초기화
+        offCtx.setTransform(1, 0, 0, 1, 0, 0);
         offCtx.scale(dpr, dpr);
 
         // 셀 크기 계산 (CSS 픽셀 기준)
-        cellSize = rect.width / BOARD_SIZE;
+        cellSize = canvasCSSSize / BOARD_SIZE;
 
         requestRender(); // 화면 갱신
     }
