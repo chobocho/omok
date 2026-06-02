@@ -206,6 +206,8 @@
 
     let cellSize = 0;
     let animationFrameId = null;
+    let aiTimeoutId = null;
+    let boardColorCache = null;
 
     // --- 초기화 ---
     document.getElementById('mode-select').addEventListener('change', (e) => {
@@ -269,8 +271,6 @@
         canvas.width = Math.floor(canvasCSSSize * dpr);
         canvas.height = Math.floor(canvasCSSSize * dpr);
 
-        console.log(`Canvas resized to ${canvas.width}x${canvas.height} with DPR ${dpr}`);
-
         // 오프스크린도 동일하게
         offscreenCanvas.width = canvas.width;
         offscreenCanvas.height = canvas.height;
@@ -319,7 +319,10 @@
         const height = offscreenCanvas.height / (window.devicePixelRatio || 1);
 
         // 배경
-        offCtx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--board-color');
+        if(!boardColorCache) {
+            boardColorCache = getComputedStyle(document.documentElement).getPropertyValue('--board-color').trim();
+        }
+        offCtx.fillStyle = boardColorCache;
         offCtx.fillRect(0, 0, width, height);
 
         // 격자
@@ -448,12 +451,16 @@
 
     function startGame() {
         initAudio();
+        // 이전 게임에서 대기중이던 AI 수가 새 게임에 끼어들지 않게 취소
+        if(aiTimeoutId) { clearTimeout(aiTimeoutId); aiTimeoutId = null; }
         gameMode = document.getElementById('mode-select').value;
         myColor = (document.getElementById('player-color').value === 'black') ? 1 : 2;
         initBoard();
         currentPlayer = 1; gameActive = true; lastMove = null;
         updateStatus();
-        if(gameMode === 'pve' && myColor === 2) setTimeout(aiMove, 500);
+        if(gameMode === 'pve' && myColor === 2) {
+            aiTimeoutId = setTimeout(()=>{ aiTimeoutId=null; aiMove(); }, 500);
+        }
     }
 
     function handleInput(xPos, yPos) {
@@ -470,11 +477,13 @@
         placeStone(x, y, currentPlayer);
 
         if(checkWin(x, y, currentPlayer)) { endGame(currentPlayer); return; }
-        if(countBlack + countWhite >= MAX_COUNT) { endGameDraw(); return; }
+        if(countBlack + countWhite >= MAX_COUNT || !canStillWin()) { endGameDraw(); return; }
 
         currentPlayer = 3 - currentPlayer; // 1->2, 2->1
         updateStatus();
-        if(gameMode === 'pve') setTimeout(aiMove, 100);
+        if(gameMode === 'pve') {
+            aiTimeoutId = setTimeout(()=>{ aiTimeoutId=null; aiMove(); }, 100);
+        }
     }
 
     function placeStone(x, y, player) {
@@ -493,7 +502,7 @@
         if(move) {
             placeStone(move.x, move.y, currentPlayer);
             if(checkWin(move.x, move.y, currentPlayer)) endGame(currentPlayer);
-            else if(countBlack + countWhite >= MAX_COUNT) endGameDraw();
+            else if(countBlack + countWhite >= MAX_COUNT || !canStillWin()) endGameDraw();
             else {
                 currentPlayer = 3 - currentPlayer;
                 updateStatus();
@@ -538,40 +547,95 @@
         if(x<0||x>=BOARD_SIZE||y<0||y>=BOARD_SIZE) return -1;
         return board[y][x];
     }
+    // 보드 상에 아직 5목을 만들 가능성이 있는 5칸 라인이 하나라도 있는지 검사.
+    // 모든 라인이 흑/백 혼합으로 막혀있으면 더는 승부가 날 수 없으므로 무승부.
+    function canStillWin(){
+        const dirs=[[1,0],[0,1],[1,1],[1,-1]];
+        for(let y=0;y<BOARD_SIZE;y++){
+            for(let x=0;x<BOARD_SIZE;x++){
+                for(const [dx,dy] of dirs){
+                    const ex=x+dx*4, ey=y+dy*4;
+                    if(ex<0||ex>=BOARD_SIZE||ey<0||ey>=BOARD_SIZE) continue;
+                    let hasB=false, hasW=false;
+                    for(let i=0;i<5;i++){
+                        const v=board[y+dy*i][x+dx*i];
+                        if(v===1) hasB=true; else if(v===2) hasW=true;
+                        if(hasB && hasW) break;
+                    }
+                    if(!(hasB && hasW)) return true;
+                }
+            }
+        }
+        return false;
+    }
+    // (x,y) 빈칸이 player p 입장에서 아직 살아있는 라인(5목 가능 라인)에
+    // 포함되는지 검사. 죽은 자리에 두는 낭비 수를 줄이기 위해 사용.
+    function isUsefulCell(x,y,p){
+        const dirs=[[1,0],[0,1],[1,1],[1,-1]];
+        const opp=3-p;
+        for(const [dx,dy] of dirs){
+            for(let off=-4; off<=0; off++){
+                const sx=x+dx*off, sy=y+dy*off;
+                const ex=sx+dx*4, ey=sy+dy*4;
+                if(sx<0||sx>=BOARD_SIZE||sy<0||sy>=BOARD_SIZE) continue;
+                if(ex<0||ex>=BOARD_SIZE||ey<0||ey>=BOARD_SIZE) continue;
+                let blocked=false;
+                for(let i=0;i<5;i++){
+                    if(board[sy+dy*i][sx+dx*i]===opp){ blocked=true; break; }
+                }
+                if(!blocked) return true;
+            }
+        }
+        return false;
+    }
     function getBestMove() {
         let max=-Infinity, bests=[]; const c = 7;
+        const me = currentPlayer, opp = 3 - currentPlayer;
         for(let y=0;y<BOARD_SIZE;y++){
             for(let x=0;x<BOARD_SIZE;x++){
                 if(board[y][x]!==0) continue;
-                const a = evalPos(x,y,currentPlayer);
-                const d = evalPos(x,y,3-currentPlayer);
+                const a = evalPos(x,y,me);
+                const d = evalPos(x,y,opp);
                 let sc = a+d + (30 - Math.abs(x-c)-Math.abs(y-c));
-                if(a>=10000) sc=a*1.2; else if(d>=10000) sc=d;
+                // 한 수에 5목 완성 가능하면 최우선 (자기 승 > 상대 차단)
+                if(a>=100000) sc=a*1.2; else if(d>=100000) sc=d;
+                // 죽은 자리(양쪽 모두 5목 불가능)는 가급적 회피
+                if(!isUsefulCell(x,y,me) && !isUsefulCell(x,y,opp)) sc -= 1000000;
                 if(sc>max){ max=sc; bests=[{x,y}]; }
                 else if(sc===max) bests.push({x,y});
             }
         }
         return bests.length ? bests[Math.floor(Math.random()*bests.length)] : null;
     }
+    // (x,y)에 player p의 돌을 놓는다고 가정했을 때의 평가 점수.
+    // 5칸 슬라이딩 윈도우 방식: (x,y)를 포함하는 모든 5칸 라인에 대해
+    // 상대 돌이 없는 윈도우의 p 돌 개수로 점수화. 끊긴 패턴(O_OO),
+    // 이중3 포크 등을 자연스럽게 합산해 인식한다.
     function evalPos(x,y,p){
         let score=0;
         const dirs=[[1,0],[0,1],[1,1],[1,-1]];
-        for(let [dx,dy] of dirs){
-            let cnt=1, open=0;
-            // Forward
-            let i=1; while(true){
-                const v=getVal(x+dx*i, y+dy*i);
-                if(v===p) cnt++; else { if(v===0) open++; break; } i++;
+        const opp=3-p;
+        for(const [dx,dy] of dirs){
+            for(let off=-4; off<=0; off++){
+                const sx=x+dx*off, sy=y+dy*off;
+                const ex=sx+dx*4, ey=sy+dy*4;
+                if(sx<0||sx>=BOARD_SIZE||sy<0||sy>=BOARD_SIZE) continue;
+                if(ex<0||ex>=BOARD_SIZE||ey<0||ey>=BOARD_SIZE) continue;
+                let pCnt=0, blocked=false;
+                for(let i=0;i<5;i++){
+                    const wx=sx+dx*i, wy=sy+dy*i;
+                    if(wx===x && wy===y) { pCnt++; continue; }
+                    const v=board[wy][wx];
+                    if(v===p) pCnt++;
+                    else if(v===opp){ blocked=true; break; }
+                }
+                if(blocked) continue;
+                if(pCnt>=5) score+=100000;
+                else if(pCnt===4) score+=1000;
+                else if(pCnt===3) score+=100;
+                else if(pCnt===2) score+=10;
+                else if(pCnt===1) score+=1;
             }
-            // Backward
-            i=1; while(true){
-                const v=getVal(x-dx*i, y-dy*i);
-                if(v===p) cnt++; else { if(v===0) open++; break; } i++;
-            }
-            if(cnt>=5) score+=100000;
-            else if(cnt===4) score += (open===2?10000:1000);
-            else if(cnt===3) score += (open===2?1000:100);
-            else if(cnt===2 && open===2) score+=100;
         }
         return score;
     }
@@ -592,6 +656,9 @@
     }
 
     document.addEventListener('keydown', e => {
+        // 폼 요소(select 등)에 포커스가 있으면 단축키 무시
+        const t = e.target;
+        if (t && t.matches && t.matches('input, textarea, select')) return;
         if(e.key.toLowerCase()==='h') showHint();
         if (e.key === 'F2') {
             e.preventDefault();
